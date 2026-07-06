@@ -36,9 +36,10 @@ Requires Python 3.13+.
 - **Credentials need both `OPENQA_API_KEY` and `OPENQA_API_SECRET`;** a partial
   pair is ignored on purpose. Without creds the server is GET-only (mutating
   tools return 403). Tests must `monkeypatch.delenv` these to stay deterministic.
-- **Test URL paths have no `/api/v1` prefix** — this openqa-async version joins
-  paths straight onto the host, so respx routes/assertions use `/jobs`, not
-  `/api/v1/jobs`.
+- **All REST paths need the `/api/v1` prefix** — this openqa-async version joins
+  paths straight onto the host (no auto-prefix), so tools call `openqa_request`
+  through the `_api()` helper (`api/v1/jobs`, …). Bare paths hit non-existent
+  web-UI routes and 404. respx routes/assertions therefore use `/api/v1/jobs`.
 - **Tests hit no live openQA:** `test_tools.py` drives tools through the FastMCP
   in-memory client and intercepts HTTP with `respx`.
 - **CLI transport precedence:** explicit `--stdio` beats `OPENQA_MCP_TRANSPORT=http`;

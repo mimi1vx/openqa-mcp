@@ -37,6 +37,16 @@ def _drop_none(params: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in params.items() if v is not None}
 
 
+def _api(path: str) -> str:
+    """Prefix a REST endpoint with ``api/v1/``.
+
+    ``openqa-async`` joins request paths straight onto the server host, so
+    the ``/api/v1`` prefix that fronts every REST endpoint must be supplied
+    here; without it requests hit non-existent web-UI routes and 404.
+    """
+    return f"api/v1/{path}"
+
+
 # --------------------------------------------------------------------------- #
 # READ tools                                                                   #
 # --------------------------------------------------------------------------- #
@@ -79,7 +89,7 @@ async def list_jobs(
             "ids": ids,
         }
     )
-    return await _client(ctx).openqa_request("GET", "jobs", params=params)
+    return await _client(ctx).openqa_request("GET", _api("jobs"), params=params)
 
 
 @mcp.tool
@@ -119,44 +129,48 @@ async def list_jobs_overview(
             "ids": ids,
         }
     )
-    return await _client(ctx).openqa_request("GET", "jobs/overview", params=params)
+    return await _client(ctx).openqa_request(
+        "GET", _api("jobs/overview"), params=params
+    )
 
 
 @mcp.tool
 async def get_job(ctx: Context, job_id: int) -> dict | list:
     """Get full details for a single job."""
-    return await _client(ctx).openqa_request("GET", f"jobs/{job_id}")
+    return await _client(ctx).openqa_request("GET", _api(f"jobs/{job_id}"))
 
 
 @mcp.tool
 async def get_job_comments(ctx: Context, job_id: int) -> dict | list:
     """List comments on a job."""
-    return await _client(ctx).openqa_request("GET", f"jobs/{job_id}/comments")
+    return await _client(ctx).openqa_request("GET", _api(f"jobs/{job_id}/comments"))
 
 
 @mcp.tool
 async def list_machines(ctx: Context) -> dict | list:
     """List configured worker machines."""
-    return await _client(ctx).openqa_request("GET", "machines")
+    return await _client(ctx).openqa_request("GET", _api("machines"))
 
 
 @mcp.tool
 async def list_test_suites(ctx: Context) -> dict | list:
     """List configured test suites."""
-    return await _client(ctx).openqa_request("GET", "test_suites")
+    return await _client(ctx).openqa_request("GET", _api("test_suites"))
 
 
 @mcp.tool
 async def list_products(ctx: Context) -> dict | list:
     """List configured products (mediums)."""
-    return await _client(ctx).openqa_request("GET", "products")
+    return await _client(ctx).openqa_request("GET", _api("products"))
 
 
 @mcp.tool
 async def find_jobs_by_setting(ctx: Context, key: str, list_value: str) -> dict | list:
     """Find jobs whose setting ``key`` equals ``list_value``."""
     params = {"key": key, "list_value": list_value}
-    return await _client(ctx).openqa_request("GET", "job_settings/jobs", params=params)
+    return await _client(ctx).openqa_request(
+        "GET", _api("job_settings/jobs"), params=params
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -170,21 +184,23 @@ async def restart_jobs(ctx: Context, job_ids: list[int]) -> list:
     client = _client(ctx)
     results = []
     for job_id in job_ids:
-        results.append(await client.openqa_request("POST", f"jobs/{job_id}/restart"))
+        results.append(
+            await client.openqa_request("POST", _api(f"jobs/{job_id}/restart"))
+        )
     return results
 
 
 @mcp.tool(tags={"mutating"})
 async def cancel_job(ctx: Context, job_id: int) -> dict | list:
     """Cancel a running or scheduled job (requires credentials)."""
-    return await _client(ctx).openqa_request("POST", f"jobs/{job_id}/cancel")
+    return await _client(ctx).openqa_request("POST", _api(f"jobs/{job_id}/cancel"))
 
 
 @mcp.tool(tags={"mutating"})
 async def add_job_comment(ctx: Context, job_id: int, text: str) -> dict | list:
     """Add a comment to a job (requires credentials)."""
     return await _client(ctx).openqa_request(
-        "POST", f"jobs/{job_id}/comments", data={"text": text}
+        "POST", _api(f"jobs/{job_id}/comments"), data={"text": text}
     )
 
 
@@ -201,12 +217,12 @@ async def trigger_isos(
     body = {"DISTRI": distri, "VERSION": version, "FLAVOR": flavor, "ARCH": arch}
     if extra:
         body.update(extra)
-    return await _client(ctx).openqa_request("POST", "isos", data=body)
+    return await _client(ctx).openqa_request("POST", _api("isos"), data=body)
 
 
 @mcp.tool(tags={"mutating"})
 async def delete_job(ctx: Context, job_id: int) -> dict | list:
     """Delete a job (requires credentials)."""
-    result = await _client(ctx).openqa_request("DELETE", f"jobs/{job_id}")
+    result = await _client(ctx).openqa_request("DELETE", _api(f"jobs/{job_id}"))
     # A 204 No Content yields a raw httpx Response, not a dict/list; normalize.
     return result if isinstance(result, (dict, list)) else {}
