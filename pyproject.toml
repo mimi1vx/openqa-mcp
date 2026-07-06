@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Local openQA mcp client"
 readme = "README.md"
 requires-python = ">=3.13"
+license = "GPL-2.0-or-later"
+license-files = ["LICENSE"]
 dependencies = [
     "fastmcp>=3.4.3",
     "openqa-async>=0.1.0",
