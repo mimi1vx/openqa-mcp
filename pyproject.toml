@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-openqa-mcp = "openqa_mcp.server:main"
+openqa-mcp = "openqa_mcp.__main__:main"
 
 [build-system]
 requires = ["uv_build>=0.11.26,<0.12"]

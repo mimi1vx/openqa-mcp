@@ -111,18 +111,32 @@ Example MCP client configuration:
 
 ### HTTP (optional)
 
-For remote or shared deployments, run over HTTP with `--http` or
-`OPENQA_MCP_TRANSPORT=http`:
+For remote or shared deployments, run over HTTP with `--http`:
 
 ```sh
-OPENQA_MCP_TRANSPORT=http OPENQA_MCP_HOST=127.0.0.1 OPENQA_MCP_PORT=8000 uv run openqa-mcp
+uv run openqa-mcp --http --server 127.0.0.1 --port 8000
 ```
+
+The server can also be launched as a module:
+
+```sh
+uv run python -m openqa_mcp --http --port 8000
+```
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `--http` | off | Serve over HTTP instead of stdio. |
+| `--stdio` | on | Serve over stdio; overrides `OPENQA_MCP_TRANSPORT=http`. |
+| `--server` | `127.0.0.1` | HTTP bind host. |
+| `--port` | `8000` | HTTP bind port. |
+
+Flags override the environment, which supplies the defaults:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `OPENQA_MCP_TRANSPORT` | `stdio` | Set to `http` to serve over HTTP. |
-| `OPENQA_MCP_HOST` | `127.0.0.1` | HTTP bind host. |
-| `OPENQA_MCP_PORT` | `8000` | HTTP bind port. |
+| `OPENQA_MCP_HOST` | `127.0.0.1` | Default HTTP bind host. |
+| `OPENQA_MCP_PORT` | `8000` | Default HTTP bind port. |
 
 Press `Ctrl-C` to stop; the server shuts down cleanly and closes its client.
 
