@@ -8,12 +8,16 @@ docstrings become the MCP tool descriptions. Mutating tools are tagged
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, cast
 
 from fastmcp import Context, FastMCP
 from openqa_async.aclient import AsyncOpenQAClient
 
 from .client import AppContext, lifespan
+
+#: Tag marking tools that mutate openQA state; stripped in read-only mode.
+MUTATING_TAG = "mutating"
 
 mcp = FastMCP(
     "openQA",
@@ -178,7 +182,7 @@ async def find_jobs_by_setting(ctx: Context, key: str, list_value: str) -> dict 
 # --------------------------------------------------------------------------- #
 
 
-@mcp.tool(tags={"mutating"})
+@mcp.tool(tags={MUTATING_TAG})
 async def restart_jobs(ctx: Context, job_ids: list[int]) -> list:
     """Restart each of the given jobs (requires credentials)."""
     client = _client(ctx)
@@ -190,13 +194,13 @@ async def restart_jobs(ctx: Context, job_ids: list[int]) -> list:
     return results
 
 
-@mcp.tool(tags={"mutating"})
+@mcp.tool(tags={MUTATING_TAG})
 async def cancel_job(ctx: Context, job_id: int) -> dict | list:
     """Cancel a running or scheduled job (requires credentials)."""
     return await _client(ctx).openqa_request("POST", _api(f"jobs/{job_id}/cancel"))
 
 
-@mcp.tool(tags={"mutating"})
+@mcp.tool(tags={MUTATING_TAG})
 async def add_job_comment(ctx: Context, job_id: int, text: str) -> dict | list:
     """Add a comment to a job (requires credentials)."""
     return await _client(ctx).openqa_request(
@@ -204,7 +208,7 @@ async def add_job_comment(ctx: Context, job_id: int, text: str) -> dict | list:
     )
 
 
-@mcp.tool(tags={"mutating"})
+@mcp.tool(tags={MUTATING_TAG})
 async def trigger_isos(
     ctx: Context,
     distri: str,
@@ -220,9 +224,23 @@ async def trigger_isos(
     return await _client(ctx).openqa_request("POST", _api("isos"), data=body)
 
 
-@mcp.tool(tags={"mutating"})
+@mcp.tool(tags={MUTATING_TAG})
 async def delete_job(ctx: Context, job_id: int) -> dict | list:
     """Delete a job (requires credentials)."""
     result = await _client(ctx).openqa_request("DELETE", _api(f"jobs/{job_id}"))
     # A 204 No Content yields a raw httpx Response, not a dict/list; normalize.
     return result if isinstance(result, (dict, list)) else {}
+
+
+def disable_mutating_tools() -> list[str]:
+    """Unregister every tool tagged ``mutating`` (read-only mode).
+
+    ``FastMCP.list_tools`` is a coroutine but does no real I/O here, so it is
+    safe to drive with ``asyncio.run`` from the synchronous CLI before
+    ``mcp.run`` starts its own event loop. Returns the removed tool names.
+    """
+    tools = asyncio.run(mcp.list_tools())
+    removed = [t.name for t in tools if MUTATING_TAG in t.tags]
+    for name in removed:
+        mcp.local_provider.remove_tool(name)
+    return removed

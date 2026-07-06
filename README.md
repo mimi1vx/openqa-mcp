@@ -81,7 +81,9 @@ dropped from the request.
 | `delete_job` | Delete a job. |
 
 Mutating tools carry the `mutating` tag so MCP clients can gate them behind
-confirmation.
+confirmation. To drop them entirely, start the server in read-only mode with
+`--readonly` (or `OPENQA_READONLY=true`): the mutating tools are never
+registered, so clients see only the read tools.
 
 ## Running
 
@@ -129,6 +131,7 @@ uv run python -m openqa_mcp --http --port 8000
 | `--stdio` | on | Serve over stdio; overrides `OPENQA_MCP_TRANSPORT=http`. |
 | `--server` | `127.0.0.1` | HTTP bind host. |
 | `--port` | `8000` | HTTP bind port. |
+| `--readonly` | off | Unregister all mutating tools (read-only server). |
 
 Flags override the environment, which supplies the defaults:
 
@@ -137,6 +140,7 @@ Flags override the environment, which supplies the defaults:
 | `OPENQA_MCP_TRANSPORT` | `stdio` | Set to `http` to serve over HTTP. |
 | `OPENQA_MCP_HOST` | `127.0.0.1` | Default HTTP bind host. |
 | `OPENQA_MCP_PORT` | `8000` | Default HTTP bind port. |
+| `OPENQA_READONLY` | `false` | Set truthy (`1`/`true`/`yes`/`on`) to disable mutating tools. |
 
 Press `Ctrl-C` to stop; the server shuts down cleanly and closes its client.
 

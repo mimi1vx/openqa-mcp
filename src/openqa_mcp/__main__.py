@@ -10,7 +10,16 @@ from __future__ import annotations
 import argparse
 import os
 
-from .server import mcp
+from .server import disable_mutating_tools, mcp
+
+
+def _env_flag(name: str) -> bool:
+    """Interpret an environment variable as a boolean toggle.
+
+    Truthy values (case-insensitive): ``1``, ``true``, ``yes``, ``on``.
+    Anything else (including unset) is false.
+    """
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,12 +56,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=int(os.environ.get("OPENQA_MCP_PORT", "8000")),
         help="HTTP bind port (default: %(default)s, or OPENQA_MCP_PORT)",
     )
+    parser.add_argument(
+        "--readonly",
+        action="store_true",
+        default=_env_flag("OPENQA_READONLY"),
+        help="disable all mutating tools (default: OPENQA_READONLY)",
+    )
     return parser
 
 
 def main() -> None:
     """Parse arguments and run the server on the selected transport."""
     args = build_parser().parse_args()
+
+    if args.readonly:
+        disable_mutating_tools()
 
     # An explicit --stdio wins; otherwise --http or the env toggle selects HTTP.
     http = not args.stdio and (
