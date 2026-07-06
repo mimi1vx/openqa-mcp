@@ -227,12 +227,17 @@ def main() -> None:
     (default ``8000``).
     """
     http = "--http" in sys.argv[1:] or os.environ.get("OPENQA_MCP_TRANSPORT") == "http"
-    if http:
-        host = os.environ.get("OPENQA_MCP_HOST", "127.0.0.1")
-        port = int(os.environ.get("OPENQA_MCP_PORT", "8000"))
-        mcp.run(transport="http", host=host, port=port)
-    else:
-        mcp.run()
+    try:
+        if http:
+            host = os.environ.get("OPENQA_MCP_HOST", "127.0.0.1")
+            port = int(os.environ.get("OPENQA_MCP_PORT", "8000"))
+            mcp.run(transport="http", host=host, port=port)
+        else:
+            mcp.run()
+    except KeyboardInterrupt:
+        # Ctrl-C: the lifespan's finally block already closed the client as the
+        # async context unwound; swallow the traceback and exit cleanly.
+        pass
 
 
 if __name__ == "__main__":
