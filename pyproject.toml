@@ -1,0 +1,25 @@
+[project]
+name = "openqa-mcp"
+version = "0.1.0"
+description = "Local openQA mcp client"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=3.4.3",
+    "openqa-async>=0.1.0",
+]
+
+[project.scripts]
+openqa-mcp = "openqa_mcp.server:main"
+
+[build-system]
+requires = ["uv_build>=0.11.26,<0.12"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "respx",
+    "httpx",
+]
