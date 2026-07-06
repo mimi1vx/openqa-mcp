@@ -8,12 +8,12 @@ docstrings become the MCP tool descriptions. Mutating tools are tagged
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from fastmcp import Context, FastMCP
 from openqa_async.aclient import AsyncOpenQAClient
 
-from .client import lifespan
+from .client import AppContext, lifespan
 
 mcp = FastMCP(
     "openQA",
@@ -29,7 +29,7 @@ mcp = FastMCP(
 
 def _client(ctx: Context) -> AsyncOpenQAClient:
     """Return the shared client from the lifespan context."""
-    return ctx.lifespan_context.client
+    return cast(AppContext, ctx.lifespan_context).client
 
 
 def _drop_none(params: dict[str, Any]) -> dict[str, Any]:
