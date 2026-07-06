@@ -146,6 +146,16 @@ def test_disable_mutating_tools_removes_tagged(restore_tools):
         "add_job_comment",
         "trigger_isos",
         "delete_job",
+        "duplicate_job",
+        "set_job_priority",
+        "restart_jobs_bulk",
+        "cancel_jobs",
+        "add_group_comment",
+        "add_parent_group_comment",
+        "update_job_comment",
+        "delete_job_comment",
+        "create_bug",
+        "cancel_scheduled_product",
     }
     remaining = asyncio.run(mcp.list_tools())
     assert not any(MUTATING_TAG in t.tags for t in remaining)

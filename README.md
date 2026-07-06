@@ -64,6 +64,24 @@ tools get `403`).
 | `list_test_suites` | List configured test suites. |
 | `list_products` | List configured products (mediums). |
 | `find_jobs_by_setting` | Find jobs whose setting `key` equals `list_value`. |
+| `get_job_details` | Get a single job with full test-module/step details. |
+| `get_job_status` | Get a lightweight job status (id, state, result, blocked_by_id). |
+| `list_job_groups` | List job groups. |
+| `get_job_group` | Get a single job group. |
+| `list_job_group_jobs` | List jobs belonging to a job group. |
+| `get_job_group_build_results` | Get aggregated build results for a job group. |
+| `list_parent_groups` | List parent job groups. |
+| `get_parent_group` | Get a single parent job group. |
+| `list_assets` | List assets known to the system. |
+| `get_asset` | Get a single asset by id. |
+| `list_workers` | List registered worker instances. |
+| `list_bugs` | List tracked bugs referenced by jobs. |
+| `search` | Full-text search across jobs, groups, and test modules. |
+| `whoami` | Return the identity associated with the current credentials. |
+| `get_scheduled_product` | Get a scheduled product (result of a prior ISO trigger). |
+| `get_iso_job_stats` | Get job statistics for scheduled products. |
+| `list_group_comments` | List comments on a job group. |
+| `list_parent_group_comments` | List comments on a parent job group. |
 
 `list_jobs` and `list_jobs_overview` accept the same optional filters:
 `state`, `result`, `distri`, `version`, `build`, `test`, `arch`, `machine`,
@@ -79,6 +97,16 @@ dropped from the request.
 | `add_job_comment` | Add a comment to a job. |
 | `trigger_isos` | Trigger ISO test scheduling for a product. |
 | `delete_job` | Delete a job. |
+| `duplicate_job` | Duplicate (clone) a job. |
+| `set_job_priority` | Set the priority of a job. |
+| `restart_jobs_bulk` | Restart several jobs in one bulk request. |
+| `cancel_jobs` | Cancel all jobs matching the given filters. |
+| `add_group_comment` | Add a comment to a job group. |
+| `add_parent_group_comment` | Add a comment to a parent job group. |
+| `update_job_comment` | Update an existing job comment. |
+| `delete_job_comment` | Delete a job comment. |
+| `create_bug` | Create a tracked bug reference. |
+| `cancel_scheduled_product` | Cancel a scheduled product / ISO by name. |
 
 Mutating tools carry the `mutating` tag so MCP clients can gate them behind
 confirmation. To drop them entirely, start the server in read-only mode with
