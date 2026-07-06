@@ -8,6 +8,8 @@ docstrings become the MCP tool descriptions. Mutating tools are tagged
 
 from __future__ import annotations
 
+import os
+import sys
 from typing import Any
 
 from fastmcp import Context, FastMCP
@@ -210,3 +212,28 @@ async def delete_job(ctx: Context, job_id: int) -> dict | list:
     result = await _client(ctx).openqa_request("DELETE", f"jobs/{job_id}")
     # A 204 No Content yields a raw httpx Response, not a dict/list; normalize.
     return result if isinstance(result, (dict, list)) else {}
+
+
+# --------------------------------------------------------------------------- #
+# Entry point                                                                  #
+# --------------------------------------------------------------------------- #
+
+
+def main() -> None:
+    """Run the server: stdio by default, HTTP when requested.
+
+    HTTP mode is selected by the ``--http`` flag or ``OPENQA_MCP_TRANSPORT=http``
+    and binds ``OPENQA_MCP_HOST`` (default ``127.0.0.1``) / ``OPENQA_MCP_PORT``
+    (default ``8000``).
+    """
+    http = "--http" in sys.argv[1:] or os.environ.get("OPENQA_MCP_TRANSPORT") == "http"
+    if http:
+        host = os.environ.get("OPENQA_MCP_HOST", "127.0.0.1")
+        port = int(os.environ.get("OPENQA_MCP_PORT", "8000"))
+        mcp.run(transport="http", host=host, port=port)
+    else:
+        mcp.run()
+
+
+if __name__ == "__main__":
+    main()
