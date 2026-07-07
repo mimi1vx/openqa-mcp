@@ -129,7 +129,6 @@ async def test_env_credentials_set_api_key_header(monkeypatch):
         ("get_asset", {"asset_id": 12}, "GET", "/api/v1/assets/12"),
         ("list_workers", {}, "GET", "/api/v1/workers"),
         ("list_bugs", {}, "GET", "/api/v1/bugs"),
-        ("whoami", {}, "GET", "/api/v1/whoami"),
         (
             "get_scheduled_product",
             {"scheduled_product_id": 9},

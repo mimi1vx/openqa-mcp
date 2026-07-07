@@ -280,12 +280,6 @@ async def search(ctx: Context, q: str) -> dict | list:
 
 
 @mcp.tool
-async def whoami(ctx: Context) -> dict | list:
-    """Return the identity associated with the current credentials."""
-    return await _client(ctx).openqa_request("GET", _api("whoami"))
-
-
-@mcp.tool
 async def get_scheduled_product(ctx: Context, scheduled_product_id: int) -> dict | list:
     """Get a scheduled product (result of a prior ISO trigger)."""
     return await _client(ctx).openqa_request(

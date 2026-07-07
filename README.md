@@ -77,7 +77,6 @@ tools get `403`).
 | `list_workers` | List registered worker instances. |
 | `list_bugs` | List tracked bugs referenced by jobs. |
 | `search` | Full-text search across jobs, groups, and test modules. |
-| `whoami` | Return the identity associated with the current credentials. |
 | `get_scheduled_product` | Get a scheduled product (result of a prior ISO trigger). |
 | `get_iso_job_stats` | Get job statistics for scheduled products. |
 | `list_group_comments` | List comments on a job group. |
