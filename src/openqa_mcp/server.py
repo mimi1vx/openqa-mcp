@@ -9,7 +9,9 @@ docstrings become the MCP tool descriptions. Mutating tools are tagged
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
+import os
+from collections.abc import Awaitable
+from typing import Any, TypeVar, cast
 
 from fastmcp import Context, FastMCP
 from openqa_async.aclient import AsyncOpenQAClient
@@ -18,6 +20,24 @@ from .client import AppContext, lifespan
 
 #: Tag marking tools that mutate openQA state; stripped in read-only mode.
 MUTATING_TAG = "mutating"
+
+
+def _heartbeat_interval() -> float:
+    """Seconds between heartbeat pings; ``<=0`` disables the heartbeat.
+
+    Read from ``OPENQA_MCP_HEARTBEAT_INTERVAL`` on each request so tests can
+    tweak it via ``monkeypatch``; malformed values fall back to the default.
+    """
+    raw = os.environ.get("OPENQA_MCP_HEARTBEAT_INTERVAL")
+    if raw is None:
+        return 15.0
+    try:
+        return float(raw)
+    except ValueError:
+        return 15.0
+
+
+_T = TypeVar("_T")
 
 mcp = FastMCP(
     "openQA",
@@ -49,6 +69,54 @@ def _api(path: str) -> str:
     here; without it requests hit non-existent web-UI routes and 404.
     """
     return f"api/v1/{path}"
+
+
+async def _with_heartbeat(ctx: Context, coro: Awaitable[_T]) -> _T:
+    """Run ``coro`` while emitting periodic progress pings to keep clients alive.
+
+    A background ticker calls ``ctx.report_progress`` every
+    ``OPENQA_MCP_HEARTBEAT_INTERVAL`` seconds (indeterminate progress: a rising
+    counter, no ``total``) so an MCP client waiting on a slow REST call sees
+    liveness instead of timing out. ``report_progress`` is a no-op unless the
+    client supplied a ``progressToken``. Ping failures are swallowed so they
+    never leak into the tool result. The ticker is always cancelled and awaited
+    in ``finally`` to avoid a leaked/pending task. Interval ``<=0`` disables it.
+    """
+    interval = _heartbeat_interval()
+    if interval <= 0:
+        return await coro
+
+    async def _ticker() -> None:
+        progress = 0.0
+        while True:
+            await asyncio.sleep(interval)
+            progress += 1
+            try:
+                await ctx.report_progress(progress, message="working…")
+            except Exception:
+                pass
+
+    ticker = asyncio.create_task(_ticker())
+    try:
+        return await coro
+    finally:
+        ticker.cancel()
+        try:
+            await ticker
+        except asyncio.CancelledError:
+            pass
+
+
+async def _request(ctx: Context, method: str, path: str, **kwargs: Any) -> Any:
+    """Issue an openQA REST request under a heartbeat.
+
+    Single funnel for every tool: routes ``AsyncOpenQAClient.openqa_request``
+    through ``_with_heartbeat`` so all tools get liveness pings without changing
+    their signatures or the request itself.
+    """
+    return await _with_heartbeat(
+        ctx, _client(ctx).openqa_request(method, path, **kwargs)
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -93,7 +161,7 @@ async def list_jobs(
             "ids": ids,
         }
     )
-    return await _client(ctx).openqa_request("GET", _api("jobs"), params=params)
+    return await _request(ctx, "GET", _api("jobs"), params=params)
 
 
 @mcp.tool
@@ -133,54 +201,50 @@ async def list_jobs_overview(
             "ids": ids,
         }
     )
-    return await _client(ctx).openqa_request(
-        "GET", _api("jobs/overview"), params=params
-    )
+    return await _request(ctx, "GET", _api("jobs/overview"), params=params)
 
 
 @mcp.tool
 async def get_job(ctx: Context, job_id: int) -> dict | list:
     """Get full details for a single job."""
-    return await _client(ctx).openqa_request("GET", _api(f"jobs/{job_id}"))
+    return await _request(ctx, "GET", _api(f"jobs/{job_id}"))
 
 
 @mcp.tool
 async def get_job_comments(ctx: Context, job_id: int) -> dict | list:
     """List comments on a job."""
-    return await _client(ctx).openqa_request("GET", _api(f"jobs/{job_id}/comments"))
+    return await _request(ctx, "GET", _api(f"jobs/{job_id}/comments"))
 
 
 @mcp.tool
 async def list_machines(ctx: Context) -> dict | list:
     """List configured worker machines."""
-    return await _client(ctx).openqa_request("GET", _api("machines"))
+    return await _request(ctx, "GET", _api("machines"))
 
 
 @mcp.tool
 async def list_test_suites(ctx: Context) -> dict | list:
     """List configured test suites."""
-    return await _client(ctx).openqa_request("GET", _api("test_suites"))
+    return await _request(ctx, "GET", _api("test_suites"))
 
 
 @mcp.tool
 async def list_products(ctx: Context) -> dict | list:
     """List configured products (mediums)."""
-    return await _client(ctx).openqa_request("GET", _api("products"))
+    return await _request(ctx, "GET", _api("products"))
 
 
 @mcp.tool
 async def find_jobs_by_setting(ctx: Context, key: str, list_value: str) -> dict | list:
     """Find jobs whose setting ``key`` equals ``list_value``."""
     params = {"key": key, "list_value": list_value}
-    return await _client(ctx).openqa_request(
-        "GET", _api("job_settings/jobs"), params=params
-    )
+    return await _request(ctx, "GET", _api("job_settings/jobs"), params=params)
 
 
 @mcp.tool
 async def get_job_details(ctx: Context, job_id: int) -> dict | list:
     """Get a single job with full test-module/step details."""
-    return await _client(ctx).openqa_request("GET", _api(f"jobs/{job_id}/details"))
+    return await _request(ctx, "GET", _api(f"jobs/{job_id}/details"))
 
 
 @mcp.tool
@@ -189,27 +253,27 @@ async def get_job_status(
 ) -> dict | list:
     """Get a lightweight job status (id, state, result, blocked_by_id)."""
     params = _drop_none({"follow": follow})
-    return await _client(ctx).openqa_request(
-        "GET", _api(f"experimental/jobs/{job_id}/status"), params=params
+    return await _request(
+        ctx, "GET", _api(f"experimental/jobs/{job_id}/status"), params=params
     )
 
 
 @mcp.tool
 async def list_job_groups(ctx: Context) -> dict | list:
     """List job groups."""
-    return await _client(ctx).openqa_request("GET", _api("job_groups"))
+    return await _request(ctx, "GET", _api("job_groups"))
 
 
 @mcp.tool
 async def get_job_group(ctx: Context, group_id: int) -> dict | list:
     """Get a single job group."""
-    return await _client(ctx).openqa_request("GET", _api(f"job_groups/{group_id}"))
+    return await _request(ctx, "GET", _api(f"job_groups/{group_id}"))
 
 
 @mcp.tool
 async def list_job_group_jobs(ctx: Context, group_id: int) -> dict | list:
     """List jobs belonging to a job group."""
-    return await _client(ctx).openqa_request("GET", _api(f"job_groups/{group_id}/jobs"))
+    return await _request(ctx, "GET", _api(f"job_groups/{group_id}/jobs"))
 
 
 @mcp.tool
@@ -230,81 +294,75 @@ async def get_job_group_build_results(
             "show_tags": show_tags,
         }
     )
-    return await _client(ctx).openqa_request(
-        "GET", _api(f"job_groups/{group_id}/build_results"), params=params
+    return await _request(
+        ctx, "GET", _api(f"job_groups/{group_id}/build_results"), params=params
     )
 
 
 @mcp.tool
 async def list_parent_groups(ctx: Context) -> dict | list:
     """List parent job groups."""
-    return await _client(ctx).openqa_request("GET", _api("parent_groups"))
+    return await _request(ctx, "GET", _api("parent_groups"))
 
 
 @mcp.tool
 async def get_parent_group(ctx: Context, group_id: int) -> dict | list:
     """Get a single parent job group."""
-    return await _client(ctx).openqa_request("GET", _api(f"parent_groups/{group_id}"))
+    return await _request(ctx, "GET", _api(f"parent_groups/{group_id}"))
 
 
 @mcp.tool
 async def list_assets(ctx: Context) -> dict | list:
     """List assets known to the system."""
-    return await _client(ctx).openqa_request("GET", _api("assets"))
+    return await _request(ctx, "GET", _api("assets"))
 
 
 @mcp.tool
 async def get_asset(ctx: Context, asset_id: int) -> dict | list:
     """Get a single asset by id."""
-    return await _client(ctx).openqa_request("GET", _api(f"assets/{asset_id}"))
+    return await _request(ctx, "GET", _api(f"assets/{asset_id}"))
 
 
 @mcp.tool
 async def list_workers(ctx: Context) -> dict | list:
     """List registered worker instances."""
-    return await _client(ctx).openqa_request("GET", _api("workers"))
+    return await _request(ctx, "GET", _api("workers"))
 
 
 @mcp.tool
 async def list_bugs(ctx: Context) -> dict | list:
     """List tracked bugs referenced by jobs."""
-    return await _client(ctx).openqa_request("GET", _api("bugs"))
+    return await _request(ctx, "GET", _api("bugs"))
 
 
 @mcp.tool
 async def search(ctx: Context, q: str) -> dict | list:
     """Full-text search across jobs, groups, and test modules."""
-    return await _client(ctx).openqa_request(
-        "GET", _api("experimental/search"), params={"q": q}
-    )
+    return await _request(ctx, "GET", _api("experimental/search"), params={"q": q})
 
 
 @mcp.tool
 async def get_scheduled_product(ctx: Context, scheduled_product_id: int) -> dict | list:
     """Get a scheduled product (result of a prior ISO trigger)."""
-    return await _client(ctx).openqa_request(
-        "GET", _api(f"isos/{scheduled_product_id}")
-    )
+    return await _request(ctx, "GET", _api(f"isos/{scheduled_product_id}"))
 
 
 @mcp.tool
 async def get_iso_job_stats(ctx: Context) -> dict | list:
     """Get job statistics for scheduled products."""
-    return await _client(ctx).openqa_request("GET", _api("isos/job_stats"))
+    return await _request(ctx, "GET", _api("isos/job_stats"))
 
 
 @mcp.tool
 async def list_group_comments(ctx: Context, group_id: int) -> dict | list:
     """List comments on a job group."""
-    return await _client(ctx).openqa_request("GET", _api(f"groups/{group_id}/comments"))
+    return await _request(ctx, "GET", _api(f"groups/{group_id}/comments"))
 
 
 @mcp.tool
 async def list_parent_group_comments(ctx: Context, parent_group_id: int) -> dict | list:
     """List comments on a parent job group."""
-    return await _client(ctx).openqa_request(
-        "GET", _api(f"parent_groups/{parent_group_id}/comments")
-    )
+    return await _request(ctx, "GET", _api(f"parent_groups/{parent_group_id}/comments"))
 
 
 # --------------------------------------------------------------------------- #
@@ -315,26 +373,23 @@ async def list_parent_group_comments(ctx: Context, parent_group_id: int) -> dict
 @mcp.tool(tags={MUTATING_TAG})
 async def restart_jobs(ctx: Context, job_ids: list[int]) -> list:
     """Restart each of the given jobs."""
-    client = _client(ctx)
     results = []
     for job_id in job_ids:
-        results.append(
-            await client.openqa_request("POST", _api(f"jobs/{job_id}/restart"))
-        )
+        results.append(await _request(ctx, "POST", _api(f"jobs/{job_id}/restart")))
     return results
 
 
 @mcp.tool(tags={MUTATING_TAG})
 async def cancel_job(ctx: Context, job_id: int) -> dict | list:
     """Cancel a running or scheduled job."""
-    return await _client(ctx).openqa_request("POST", _api(f"jobs/{job_id}/cancel"))
+    return await _request(ctx, "POST", _api(f"jobs/{job_id}/cancel"))
 
 
 @mcp.tool(tags={MUTATING_TAG})
 async def add_job_comment(ctx: Context, job_id: int, text: str) -> dict | list:
     """Add a comment to a job."""
-    return await _client(ctx).openqa_request(
-        "POST", _api(f"jobs/{job_id}/comments"), data={"text": text}
+    return await _request(
+        ctx, "POST", _api(f"jobs/{job_id}/comments"), data={"text": text}
     )
 
 
@@ -351,13 +406,13 @@ async def trigger_isos(
     body = {"DISTRI": distri, "VERSION": version, "FLAVOR": flavor, "ARCH": arch}
     if extra:
         body.update(extra)
-    return await _client(ctx).openqa_request("POST", _api("isos"), data=body)
+    return await _request(ctx, "POST", _api("isos"), data=body)
 
 
 @mcp.tool(tags={MUTATING_TAG})
 async def delete_job(ctx: Context, job_id: int) -> dict | list:
     """Delete a job."""
-    result = await _client(ctx).openqa_request("DELETE", _api(f"jobs/{job_id}"))
+    result = await _request(ctx, "DELETE", _api(f"jobs/{job_id}"))
     # A 204 No Content yields a raw httpx Response, not a dict/list; normalize.
     return result if isinstance(result, (dict, list)) else {}
 
@@ -371,17 +426,13 @@ async def duplicate_job(
 ) -> dict | list:
     """Duplicate (clone) a job."""
     data = _drop_none({"prio": prio, "dup_type_auto": dup_type_auto})
-    return await _client(ctx).openqa_request(
-        "POST", _api(f"jobs/{job_id}/duplicate"), data=data
-    )
+    return await _request(ctx, "POST", _api(f"jobs/{job_id}/duplicate"), data=data)
 
 
 @mcp.tool(tags={MUTATING_TAG})
 async def set_job_priority(ctx: Context, job_id: int, prio: int) -> dict | list:
     """Set the priority of a job."""
-    return await _client(ctx).openqa_request(
-        "POST", _api(f"jobs/{job_id}/prio"), data={"prio": prio}
-    )
+    return await _request(ctx, "POST", _api(f"jobs/{job_id}/prio"), data={"prio": prio})
 
 
 @mcp.tool(tags={MUTATING_TAG})
@@ -393,7 +444,7 @@ async def restart_jobs_bulk(
 ) -> dict | list:
     """Restart several jobs in one bulk request."""
     data = _drop_none({"jobs": job_ids, "force": force, "prio": prio})
-    return await _client(ctx).openqa_request("POST", _api("jobs/restart"), data=data)
+    return await _request(ctx, "POST", _api("jobs/restart"), data=data)
 
 
 @mcp.tool(tags={MUTATING_TAG})
@@ -425,14 +476,14 @@ async def cancel_jobs(
             "group": group,
         }
     )
-    return await _client(ctx).openqa_request("POST", _api("jobs/cancel"), params=params)
+    return await _request(ctx, "POST", _api("jobs/cancel"), params=params)
 
 
 @mcp.tool(tags={MUTATING_TAG})
 async def add_group_comment(ctx: Context, group_id: int, text: str) -> dict | list:
     """Add a comment to a job group."""
-    return await _client(ctx).openqa_request(
-        "POST", _api(f"groups/{group_id}/comments"), data={"text": text}
+    return await _request(
+        ctx, "POST", _api(f"groups/{group_id}/comments"), data={"text": text}
     )
 
 
@@ -441,8 +492,11 @@ async def add_parent_group_comment(
     ctx: Context, parent_group_id: int, text: str
 ) -> dict | list:
     """Add a comment to a parent job group."""
-    return await _client(ctx).openqa_request(
-        "POST", _api(f"parent_groups/{parent_group_id}/comments"), data={"text": text}
+    return await _request(
+        ctx,
+        "POST",
+        _api(f"parent_groups/{parent_group_id}/comments"),
+        data={"text": text},
     )
 
 
@@ -451,17 +505,15 @@ async def update_job_comment(
     ctx: Context, job_id: int, comment_id: int, text: str
 ) -> dict | list:
     """Update an existing job comment."""
-    return await _client(ctx).openqa_request(
-        "PUT", _api(f"jobs/{job_id}/comments/{comment_id}"), data={"text": text}
+    return await _request(
+        ctx, "PUT", _api(f"jobs/{job_id}/comments/{comment_id}"), data={"text": text}
     )
 
 
 @mcp.tool(tags={MUTATING_TAG})
 async def delete_job_comment(ctx: Context, job_id: int, comment_id: int) -> dict | list:
     """Delete a job comment."""
-    result = await _client(ctx).openqa_request(
-        "DELETE", _api(f"jobs/{job_id}/comments/{comment_id}")
-    )
+    result = await _request(ctx, "DELETE", _api(f"jobs/{job_id}/comments/{comment_id}"))
     # A 204 No Content yields a raw httpx Response, not a dict/list; normalize.
     return result if isinstance(result, (dict, list)) else {}
 
@@ -470,13 +522,13 @@ async def delete_job_comment(ctx: Context, job_id: int, comment_id: int) -> dict
 async def create_bug(ctx: Context, bugid: str, title: str | None = None) -> dict | list:
     """Create a tracked bug reference."""
     data = _drop_none({"bugid": bugid, "title": title})
-    return await _client(ctx).openqa_request("POST", _api("bugs"), data=data)
+    return await _request(ctx, "POST", _api("bugs"), data=data)
 
 
 @mcp.tool(tags={MUTATING_TAG})
 async def cancel_scheduled_product(ctx: Context, name: str) -> dict | list:
     """Cancel a scheduled product / ISO by name."""
-    return await _client(ctx).openqa_request("POST", _api(f"isos/{name}/cancel"))
+    return await _request(ctx, "POST", _api(f"isos/{name}/cancel"))
 
 
 def disable_mutating_tools() -> list[str]:

@@ -168,6 +168,7 @@ Flags override the environment, which supplies the defaults:
 | `OPENQA_MCP_HOST` | `127.0.0.1` | Default HTTP bind host. |
 | `OPENQA_MCP_PORT` | `8000` | Default HTTP bind port. |
 | `OPENQA_READONLY` | `false` | Set truthy (`1`/`true`/`yes`/`on`) to disable mutating tools. |
+| `OPENQA_MCP_HEARTBEAT_INTERVAL` | `15.0` | Seconds between progress "heartbeat" pings sent while a tool waits on a slow openQA call, so MCP clients see liveness instead of timing out. Set `<=0` to disable. Pings are a no-op unless the client sent a `progressToken`. |
 
 Press `Ctrl-C` to stop; the server shuts down cleanly and closes its client.
 

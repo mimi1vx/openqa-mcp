@@ -10,6 +10,8 @@ the tools supply the ``/api/v1`` prefix themselves; the expected paths are
 ``/api/v1/jobs`` etc.
 """
 
+import asyncio
+
 import httpx
 import pytest
 import respx
@@ -336,3 +338,47 @@ async def test_cancel_scheduled_product_posts_by_name():
             await client.call_tool("cancel_scheduled_product", {"name": "openSUSE.iso"})
 
     assert route.calls.last.request.method == "POST"
+
+
+# --------------------------------------------------------------------------- #
+# Heartbeat (progress notifications during slow calls)                         #
+# --------------------------------------------------------------------------- #
+
+
+async def _slow_ok(_request):
+    """A respx side effect that stalls, forcing at least one heartbeat tick."""
+    await asyncio.sleep(0.15)
+    return httpx.Response(200, json={"jobs": []})
+
+
+async def test_slow_call_emits_progress(monkeypatch):
+    monkeypatch.setenv("OPENQA_MCP_HEARTBEAT_INTERVAL", "0.02")
+    pings: list[tuple[float, float | None, str | None]] = []
+
+    async def handler(progress, total, message):
+        pings.append((progress, total, message))
+
+    with respx.mock(assert_all_called=True) as router:
+        router.get(f"{_SERVER}/api/v1/jobs").mock(side_effect=_slow_ok)
+        async with Client(mcp) as client:
+            await client.call_tool("list_jobs", {}, progress_handler=handler)
+
+    assert pings, "expected at least one heartbeat progress notification"
+    # Indeterminate progress: rising counter, no total.
+    assert pings[0][1] is None
+    assert pings[0][0] > 0
+
+
+async def test_disabled_heartbeat_emits_no_progress(monkeypatch):
+    monkeypatch.setenv("OPENQA_MCP_HEARTBEAT_INTERVAL", "0")
+    pings: list[tuple[float, float | None, str | None]] = []
+
+    async def handler(progress, total, message):
+        pings.append((progress, total, message))
+
+    with respx.mock(assert_all_called=True) as router:
+        router.get(f"{_SERVER}/api/v1/jobs").mock(side_effect=_slow_ok)
+        async with Client(mcp) as client:
+            await client.call_tool("list_jobs", {}, progress_handler=handler)
+
+    assert pings == []

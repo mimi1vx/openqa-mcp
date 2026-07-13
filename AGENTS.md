@@ -47,6 +47,12 @@ Requires Python 3.13+.
   (not the openQA target, which is `OPENQA_SERVER`).
 - **`fastmcp` types `ctx.lifespan_context` generically** — `_client` casts to
   `AppContext` so `.client` type-checks. Preserve the cast.
+- **Every tool's REST call funnels through `_request(ctx, method, path, ...)`,**
+  not `_client(ctx).openqa_request(...)` directly. `_request` wraps the call in
+  `_with_heartbeat`, which pings `ctx.report_progress` every
+  `OPENQA_MCP_HEARTBEAT_INTERVAL` seconds (default `15.0`, `<=0` disables) to keep
+  MCP clients alive during slow calls. Add new tools via `_request` so they get
+  the heartbeat for free; keep `openqa_request` reachable only from `_request`.
 
 ## Conventions
 
