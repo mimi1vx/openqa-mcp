@@ -56,8 +56,8 @@ tools get `403`).
 
 | Tool | Description |
 | --- | --- |
-| `list_jobs` | List jobs matching the given filters. |
-| `list_jobs_overview` | List a condensed jobs overview matching the given filters. |
+| `list_jobs` | List jobs matching the given filters. Pass `summary=True` for a compact triage breakdown. |
+| `list_jobs_overview` | List a condensed jobs overview matching the given filters. Pass `summary=True` for a compact triage breakdown. |
 | `get_job` | Get full details for a single job. |
 | `get_job_comments` | List comments on a job. |
 | `list_machines` | List configured worker machines. |
@@ -86,6 +86,25 @@ tools get `403`).
 `state`, `result`, `distri`, `version`, `build`, `test`, `arch`, `machine`,
 `groupid`, `group`, `latest`, `limit`, `page`, `ids`. Unset filters are
 dropped from the request.
+
+Both also accept `summary` (default `False`). The default full result can be
+very large (~1.5 MB / 150+ jobs for a populated build) and may be truncated by
+MCP clients. Pass `summary=True` for a compact per-result breakdown:
+
+```json
+{
+  "total": 156,
+  "by_result": {"passed": 57, "softfailed": 61, "failed": 7, "...": 0},
+  "by_state":  {"done": 136, "cancelled": 20},
+  "by_arch":   {"x86_64": 78, "aarch64": 39, "s390x": 39},
+  "jobs": {"failed": [{"id": 1, "test": "install", "arch": "x86_64"}], "...": []}
+}
+```
+
+Jobs bucket by `result`; in-progress jobs (result `none`) bucket by `state`
+(e.g. `running`, `scheduled`). To work with the full data instead, save it to a
+temporary file and process it with `jq`, e.g.
+`jq '.jobs[] | select(.result=="failed")'`.
 
 ### Mutating tools (require credentials)
 

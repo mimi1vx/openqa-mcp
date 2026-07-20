@@ -71,6 +71,47 @@ def _api(path: str) -> str:
     return f"api/v1/{path}"
 
 
+def _summarize_jobs(jobs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Collapse a raw openQA ``jobs`` array into a compact triage summary.
+
+    The raw array is ~10 KB/job (assets/modules/settings/…) and truncates in MCP
+    clients; this keeps only id/test/arch per job plus counts. Each job buckets
+    by its ``result`` when that is truthy and not ``"none"``, otherwise by its
+    ``state`` (so in-progress jobs land under ``running``/``scheduled`` rather
+    than a ``"none"`` catch-all); a job lacking both falls under ``"unknown"``.
+    """
+    by_result: dict[str, int] = {}
+    by_state: dict[str, int] = {}
+    by_arch: dict[str, int] = {}
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    for job in jobs:
+        result = job.get("result")
+        state = job.get("state")
+        key = result if result and result != "none" else state
+        key = key or "unknown"
+        buckets.setdefault(key, []).append(
+            {
+                "id": job.get("id"),
+                "test": job.get("test"),
+                "arch": (job.get("settings") or {}).get("ARCH"),
+            }
+        )
+        if result:
+            by_result[result] = by_result.get(result, 0) + 1
+        if state:
+            by_state[state] = by_state.get(state, 0) + 1
+        arch = (job.get("settings") or {}).get("ARCH")
+        if arch:
+            by_arch[arch] = by_arch.get(arch, 0) + 1
+    return {
+        "total": len(jobs),
+        "by_result": by_result,
+        "by_state": by_state,
+        "by_arch": by_arch,
+        "jobs": buckets,
+    }
+
+
 async def _with_heartbeat(ctx: Context, coro: Awaitable[_T]) -> _T:
     """Run ``coro`` while emitting periodic progress pings to keep clients alive.
 
@@ -141,8 +182,16 @@ async def list_jobs(
     limit: int | None = None,
     page: int | None = None,
     ids: list[int] | None = None,
+    summary: bool = False,
 ) -> dict | list:
-    """List jobs matching the given filters."""
+    """List jobs matching the given filters.
+
+    WARNING: the full result can be very large (~1.5 MB / 150+ jobs for a
+    populated build) and may be truncated by MCP clients. For triage, pass
+    summary=True for a compact per-result breakdown. To work with the full data,
+    save it to a temporary file and process it with jq, e.g.
+    `jq '.jobs[] | select(.result=="failed")'`.
+    """
     params = _drop_none(
         {
             "state": state,
@@ -161,7 +210,10 @@ async def list_jobs(
             "ids": ids,
         }
     )
-    return await _request(ctx, "GET", _api("jobs"), params=params)
+    body = await _request(ctx, "GET", _api("jobs"), params=params)
+    if summary and isinstance(body, dict):
+        return _summarize_jobs(body.get("jobs") or [])
+    return body
 
 
 @mcp.tool
@@ -181,8 +233,16 @@ async def list_jobs_overview(
     limit: int | None = None,
     page: int | None = None,
     ids: list[int] | None = None,
+    summary: bool = False,
 ) -> dict | list:
-    """List a condensed jobs overview matching the given filters."""
+    """List a condensed jobs overview matching the given filters.
+
+    WARNING: the full result can be very large (~1.5 MB / 150+ jobs for a
+    populated build) and may be truncated by MCP clients. For triage, pass
+    summary=True for a compact per-result breakdown. To work with the full data,
+    save it to a temporary file and process it with jq, e.g.
+    `jq '.jobs[] | select(.result=="failed")'`.
+    """
     params = _drop_none(
         {
             "state": state,
@@ -201,7 +261,11 @@ async def list_jobs_overview(
             "ids": ids,
         }
     )
-    return await _request(ctx, "GET", _api("jobs/overview"), params=params)
+    body = await _request(ctx, "GET", _api("jobs/overview"), params=params)
+    if summary:
+        jobs = body.get("jobs") if isinstance(body, dict) else body
+        return _summarize_jobs(jobs or [])
+    return body
 
 
 @mcp.tool

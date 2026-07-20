@@ -64,6 +64,108 @@ async def test_none_params_are_dropped_from_query_string():
     assert "arch" not in params
 
 
+_SUMMARY_JOBS = {
+    "jobs": [
+        {
+            "id": 1,
+            "test": "boot",
+            "result": "passed",
+            "state": "done",
+            "settings": {"ARCH": "x86_64"},
+        },
+        {
+            "id": 2,
+            "test": "kdump",
+            "result": "softfailed",
+            "state": "done",
+            "settings": {"ARCH": "aarch64"},
+        },
+        {
+            "id": 3,
+            "test": "install",
+            "result": "failed",
+            "state": "done",
+            "settings": {"ARCH": "x86_64"},
+        },
+        {
+            "id": 4,
+            "test": "skipped_one",
+            "result": "skipped",
+            "state": "cancelled",
+            "settings": {"ARCH": "s390x"},
+        },
+        # In-progress: result="none" -> bucket by state.
+        {
+            "id": 5,
+            "test": "wip",
+            "result": "none",
+            "state": "running",
+            "settings": {"ARCH": "x86_64"},
+        },
+        # Missing settings must not raise; arch is None.
+        {"id": 6, "test": "nosettings", "result": "passed", "state": "done"},
+    ]
+}
+
+
+async def test_list_jobs_summary_returns_compact_shape():
+    with respx.mock(assert_all_called=True) as router:
+        router.get(f"{_SERVER}/api/v1/jobs").mock(
+            return_value=httpx.Response(200, json=_SUMMARY_JOBS)
+        )
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "list_jobs", {"distri": "sle-micro", "summary": True}
+            )
+
+    summary = result.structured_content["result"]
+    assert summary["total"] == 6
+    assert summary["by_result"] == {
+        "passed": 2,
+        "softfailed": 1,
+        "failed": 1,
+        "skipped": 1,
+        "none": 1,
+    }
+    assert summary["by_state"] == {"done": 4, "cancelled": 1, "running": 1}
+    assert summary["by_arch"] == {"x86_64": 3, "aarch64": 1, "s390x": 1}
+    # Softfailed + skipped surfaced; in-progress job buckets under its state.
+    assert [j["id"] for j in summary["jobs"]["passed"]] == [1, 6]
+    assert summary["jobs"]["softfailed"][0]["test"] == "kdump"
+    assert summary["jobs"]["skipped"][0]["arch"] == "s390x"
+    assert summary["jobs"]["running"][0]["id"] == 5
+    assert "none" not in summary["jobs"]
+    # Job lacking settings yields arch=None without raising.
+    assert summary["jobs"]["passed"][1]["arch"] is None
+
+
+async def test_list_jobs_overview_summary_uses_shared_helper():
+    # Overview endpoint returns a bare list of jobs.
+    with respx.mock(assert_all_called=True) as router:
+        router.get(f"{_SERVER}/api/v1/jobs/overview").mock(
+            return_value=httpx.Response(200, json=_SUMMARY_JOBS["jobs"])
+        )
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "list_jobs_overview", {"distri": "sle-micro", "summary": True}
+            )
+
+    summary = result.structured_content["result"]
+    assert summary["total"] == 6
+    assert summary["by_result"]["softfailed"] == 1
+    assert summary["jobs"]["running"][0]["id"] == 5
+
+
+async def test_summary_tool_descriptions_warn_about_size():
+    async with Client(mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+    for name in ("list_jobs", "list_jobs_overview"):
+        desc = tools[name].description or ""
+        assert "WARNING" in desc
+        assert "jq" in desc
+        assert "summary=True" in desc
+
+
 async def test_mutating_tool_issues_correct_post():
     with respx.mock(assert_all_called=True) as router:
         route = router.post(f"{_SERVER}/api/v1/jobs/7/comments").mock(
