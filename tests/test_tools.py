@@ -64,6 +64,27 @@ async def test_none_params_are_dropped_from_query_string():
     assert "arch" not in params
 
 
+async def test_list_jobs_paginates_with_offset_not_page():
+    # openQA's job#list reads `offset`; it silently ignores `page`. The tool must
+    # forward the real, effective pagination parameter.
+    with respx.mock(assert_all_called=True) as router:
+        route = router.get(f"{_SERVER}/api/v1/jobs").mock(
+            return_value=httpx.Response(200, json={"jobs": []})
+        )
+        async with Client(mcp) as client:
+            await client.call_tool("list_jobs", {"offset": 100})
+
+    params = dict(route.calls.last.request.url.params)
+    assert params == {"offset": "100"}
+
+
+async def test_list_jobs_rejects_nonexistent_page_param():
+    # `page` was never honored by openQA; it must no longer be a tool parameter.
+    async with Client(mcp) as client:
+        with pytest.raises(Exception):
+            await client.call_tool("list_jobs", {"page": 2})
+
+
 _SUMMARY_JOBS = {
     "jobs": [
         {

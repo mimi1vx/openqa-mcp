@@ -180,7 +180,7 @@ async def list_jobs(
     group: str | None = None,
     latest: int | None = None,
     limit: int | None = None,
-    page: int | None = None,
+    offset: int | None = None,
     ids: list[int] | None = None,
     summary: bool = False,
 ) -> dict | list:
@@ -206,7 +206,7 @@ async def list_jobs(
             "group": group,
             "latest": latest,
             "limit": limit,
-            "page": page,
+            "offset": offset,
             "ids": ids,
         }
     )
@@ -231,7 +231,6 @@ async def list_jobs_overview(
     group: str | None = None,
     latest: int | None = None,
     limit: int | None = None,
-    page: int | None = None,
     ids: list[int] | None = None,
     summary: bool = False,
 ) -> dict | list:
@@ -257,7 +256,6 @@ async def list_jobs_overview(
             "group": group,
             "latest": latest,
             "limit": limit,
-            "page": page,
             "ids": ids,
         }
     )

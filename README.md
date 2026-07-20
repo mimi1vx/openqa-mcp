@@ -84,8 +84,9 @@ tools get `403`).
 
 `list_jobs` and `list_jobs_overview` accept the same optional filters:
 `state`, `result`, `distri`, `version`, `build`, `test`, `arch`, `machine`,
-`groupid`, `group`, `latest`, `limit`, `page`, `ids`. Unset filters are
-dropped from the request.
+`groupid`, `group`, `latest`, `limit`, `ids`. `list_jobs` additionally accepts
+`offset` for pagination (the overview endpoint returns only the latest job per
+scenario and is not paginated). Unset filters are dropped from the request.
 
 Both also accept `summary` (default `False`). The default full result can be
 very large (~1.5 MB / 150+ jobs for a populated build) and may be truncated by
