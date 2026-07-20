@@ -30,6 +30,7 @@ to the openQA client config file for credentials.
 | `OPENQA_API_KEY` | *(unset)* | API key; overrides the config file when set. |
 | `OPENQA_API_SECRET` | *(unset)* | API secret; overrides the config file when set. |
 | `OPENQA_VERIFY` | `true` | TLS verification: `true`/`false`, or a path to a CA bundle. |
+| `OPENQA_MCP_TIMEOUT` | `30.0` | Per-request HTTP timeout (seconds) for openQA calls; raise for slow queries like large `latest=1` failed-job lists. `<=0` disables the timeout. |
 
 `OPENQA_API_KEY` and `OPENQA_API_SECRET` only take effect when **both** are
 set; a partial pair is ignored so the client is never half-configured.

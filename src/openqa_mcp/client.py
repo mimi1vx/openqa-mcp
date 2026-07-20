@@ -39,6 +39,25 @@ def _parse_verify(raw: str | None) -> bool | str:
     return True
 
 
+def _parse_timeout(raw: str | None) -> httpx.Timeout:
+    """Map ``OPENQA_MCP_TIMEOUT`` to an httpx ``Timeout``.
+
+    Unset defaults to 30s (headroom for slow ``latest=1`` failed-job queries,
+    which openqa-async's underlying 5s httpx default kills). ``<=0`` disables
+    the timeout entirely; malformed values fall back to the default.
+    """
+    default = 30.0
+    if raw is None:
+        return httpx.Timeout(default)
+    try:
+        value = float(raw)
+    except ValueError:
+        return httpx.Timeout(default)
+    if value <= 0:
+        return httpx.Timeout(None)
+    return httpx.Timeout(value)
+
+
 def _apply_env_credentials(client: AsyncOpenQAClient) -> None:
     """Override the client's API credentials from the environment.
 
@@ -74,13 +93,19 @@ def get_client() -> AsyncOpenQAClient:
     """Build a shared ``AsyncOpenQAClient`` from environment configuration.
 
     Reads ``OPENQA_SERVER`` (empty falls back to the openqa-async default),
-    ``OPENQA_VERIFY``, and optionally ``OPENQA_API_KEY`` /
-    ``OPENQA_API_SECRET`` to override config-file credentials.
+    ``OPENQA_VERIFY``, ``OPENQA_MCP_TIMEOUT``, and optionally ``OPENQA_API_KEY``
+    / ``OPENQA_API_SECRET`` to override config-file credentials.
     """
     server = os.environ.get("OPENQA_SERVER", "")
     verify = _parse_verify(os.environ.get("OPENQA_VERIFY"))
     client = AsyncOpenQAClient(server=server, verify=verify)
     _apply_env_credentials(client)
+    # openqa-async 0.1.0 builds its httpx client with no timeout (httpx's 5s
+    # default kills slow queries) and exposes no knob for it. Override after
+    # _apply_env_credentials so it also covers the client it may rebuild.
+    # NOTE: like _apply_env_credentials, this reaches into client.client on
+    # purpose; keep timeout wiring here until openqa-async accepts `timeout`.
+    client.client.timeout = _parse_timeout(os.environ.get("OPENQA_MCP_TIMEOUT"))
     return client
 
 
