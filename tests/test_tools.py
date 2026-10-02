@@ -15,8 +15,8 @@ import asyncio
 import httpx
 import pytest
 import respx
-
 from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from openqa_mcp.server import mcp
 
@@ -81,7 +81,7 @@ async def test_list_jobs_paginates_with_offset_not_page():
 async def test_list_jobs_rejects_nonexistent_page_param():
     # `page` was never honored by openQA; it must no longer be a tool parameter.
     async with Client(mcp) as client:
-        with pytest.raises(Exception):
+        with pytest.raises(ToolError):
             await client.call_tool("list_jobs", {"page": 2})
 
 

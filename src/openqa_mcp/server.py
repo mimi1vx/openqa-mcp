@@ -9,9 +9,10 @@ docstrings become the MCP tool descriptions. Mutating tools are tagged
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 from collections.abc import Awaitable
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from fastmcp import Context, FastMCP
 from openqa_async.aclient import AsyncOpenQAClient
@@ -36,8 +37,6 @@ def _heartbeat_interval() -> float:
     except ValueError:
         return 15.0
 
-
-_T = TypeVar("_T")
 
 mcp = FastMCP(
     "openQA",
@@ -112,7 +111,7 @@ def _summarize_jobs(jobs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-async def _with_heartbeat(ctx: Context, coro: Awaitable[_T]) -> _T:
+async def _with_heartbeat[T](ctx: Context, coro: Awaitable[T]) -> T:
     """Run ``coro`` while emitting periodic progress pings to keep clients alive.
 
     A background ticker calls ``ctx.report_progress`` every
@@ -132,10 +131,8 @@ async def _with_heartbeat(ctx: Context, coro: Awaitable[_T]) -> _T:
         while True:
             await asyncio.sleep(interval)
             progress += 1
-            try:
+            with contextlib.suppress(Exception):
                 await ctx.report_progress(progress, message="working…")
-            except Exception:
-                pass
 
     ticker = asyncio.create_task(_ticker())
     try:
