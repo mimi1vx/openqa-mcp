@@ -2,9 +2,8 @@
 
 import httpx
 import pytest
-
-from openqa_async.aclient import AsyncOpenQAClient
 from openqa_async._auth import OpenQAAuth
+from openqa_async.aclient import AsyncOpenQAClient
 
 from openqa_mcp.client import AppContext, _parse_verify, get_client, lifespan
 
